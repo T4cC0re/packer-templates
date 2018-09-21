@@ -16,21 +16,28 @@ export device
 memory_size_in_kilobytes=$(free | awk '/^Mem:/ { print $2 }')
 swap_size_in_kilobytes=$((memory_size_in_kilobytes * 2))
 sfdisk "$device" <<EOF
-label: dos
-size=${swap_size_in_kilobytes}KiB, type=82
-                                   type=83, bootable
+label: gpt
+size=512MiB, type=1, bootable
+size=${swap_size_in_kilobytes}KiB, type=19
+type=20
 EOF
-mkswap "${device}1"
-mkfs.ext4 "${device}2"
-mount "${device}2" /mnt
+mkswap "${device}2"
+mkfs.btrfs "${device}3"
+mount "${device}3" /mnt
+mkdir /mnt/boot
+mkfs.vfat -F 32 "${device}1"
+mount "${device}1" /mnt/boot
 
-curl -fsS https://www.archlinux.org/mirrorlist/?country=all > /tmp/mirrolist
-grep '^#Server' /tmp/mirrolist | sort -R | head -n 50 | sed 's/^#//' > /tmp/mirrolist.50
-rankmirrors -v /tmp/mirrolist.50 | tee /etc/pacman.d/mirrorlist
-pacstrap /mnt base grub openssh sudo
+cat <<\EOF > /etc/pacman.d/mirrorlist
+Server = https://mirror.local.t4cc0.re/archlinux/$repo/os/$arch
+Server = https://mirror.t4cc0.re/archlinux/$repo/os/$arch
+Server = http://archlinux.mirror.iphh.net/$repo/os/$arch
+EOF
 
-swapon "${device}1"
+pacstrap /mnt base openssh sudo btrfs-progs
+
+swapon "${device}2"
 genfstab -p /mnt >> /mnt/etc/fstab
-swapoff "${device}1"
+swapoff "${device}2"
 
 arch-chroot /mnt /bin/bash

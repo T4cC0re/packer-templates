@@ -5,13 +5,11 @@ set -x
 
 ln -sf /usr/share/zoneinfo/UTC /etc/localtime
 
-echo 'archlinux' > /etc/hostname
+echo template > /etc/hostname
 
 sed -i -e 's/^#\(en_US.UTF-8\)/\1/' /etc/locale.gen
 locale-gen
 echo 'LANG=en_US.UTF-8' > /etc/locale.conf
-
-mkinitcpio -p linux
 
 echo -e 'vagrant\nvagrant' | passwd
 useradd -m -U vagrant
@@ -22,12 +20,23 @@ vagrant ALL=(ALL) NOPASSWD: ALL
 EOF
 chmod 440 /etc/sudoers.d/vagrant
 
-mkdir -p /etc/systemd/network
-ln -sf /dev/null /etc/systemd/network/99-default.link
+
+mkinitcpio -p linux
+
+IF="$(ip -o a | grep -v lo | awk '{print $2}' | head -1)"
 
 systemctl enable sshd
-systemctl enable dhcpcd@eth0
+systemctl enable dhcpcd@${IF}
 
-grub-install "$device"
-sed -i -e 's/^GRUB_TIMEOUT=.*$/GRUB_TIMEOUT=1/' /etc/default/grub
-grub-mkconfig -o /boot/grub/grub.cfg
+bootctl install --path "/boot"
+
+ROOTDEV="$(mount | grep btrfs | awk '{print $1}')"
+echo $ROOTDEV
+UUID="$(blkid -o value -s UUID "$ROOTDEV")"
+
+cat <<EOF > /boot/loader/entries/ArchLinux.conf
+title ArchLinux
+linux /vmlinuz-linux
+initrd /initramfs-linux.img
+options root=UUID=$UUID rw
+EOF
